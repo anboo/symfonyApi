@@ -18,7 +18,7 @@ framework:
         resource: "%kernel.root_dir%/config/routing.yml"
         strict_requirements: ~
     form:            ~
-    csrf_protection: ~
+    csrf_protection: false
     validation:      { enable_annotations: true }
     #serializer:      { enable_annotations: true }
     templating:
@@ -74,7 +74,9 @@ fos_rest:
     routing_loader:
         default_format: json                            # All responses should be JSON formated
         include_format: false                           # We do not include format in request, so that all responses
-                                                        # will eventually be JSON formated
+    disable_csrf_role: ROLE_API
+    view:
+        view_response_listener: 'force'
 
 fos_user:
     db_driver: orm

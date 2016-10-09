@@ -3,77 +3,146 @@
 namespace Acme\ApiBundle\Controller;
 
 use Acme\GameBundle\Entity\Company;
+use Acme\GameBundle\Form\CompanyType;
 use FOS\RestBundle\Context\Context;
+use FOS\RestBundle\Controller\Annotations\Get;
+use FOS\RestBundle\Controller\Annotations\Route;
+use FOS\RestBundle\Controller\Annotations\View;
 use FOS\RestBundle\Controller\FOSRestController;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\ParamConverter;
 use Symfony\Component\HttpFoundation\Request;
+use Nelmio\ApiDocBundle\Annotation\ApiDoc;
 
+/**
+ * Class DemoController
+ * @package Acme\ApiBundle\Controller
+ * @Route("/company")
+ */
 class DemoController extends FOSRestController
 {
-    public function getDemosAction(Request $request)
+    /**
+     * Этот метод позволяет создать новую компанию
+     *
+     * @ApiDoc(
+     *  resource=true,
+     *  description="Получение списка компаний",
+     *  input = {"class" = "Acme\GameBundle\Form\CompanyType", "paramType" = "query"}
+     * )
+     */
+    public function postCompanyBanAction(Request $request) {
+        $requestContent = $request->getContent();
+        $data = [
+            'md5'        => md5($requestContent),
+            'created_at' => time()
+        ];
+
+        $form = $this->createForm(new CompanyType);
+        $form->handleRequest($request);
+
+        if($form->isSubmitted() && $form->isValid()) {
+            $company = $form->getData();
+            $em = $this->getDoctrine()->getManager();
+
+            $em->persist($company);
+            $em->flush();
+
+            $data['success'] = 1;
+            $data['item'] = $company;
+        } else {
+            $data['error'] = 1;
+            $data['errors'] = $form->getErrors();
+        }
+
+        $view = $this->view($data);
+        return $this->handleView($view);
+    }
+
+    /**
+     * Этот метод позволяет создать новую компанию
+     *
+     * @ApiDoc(
+     *  resource=true,
+     *  description="Получение списка компаний",
+     *  filters={
+     *      {"name"="authToken", "dataType"="integer", "description": "Токен доступа"},
+     *      {"name"="author", "dataType"="string", "pattern"="(foo|bar) ASC|DESC"},
+     *      {"name"="isPrivate", "dataType"="string", "pattern"="(foo|bar) ASC|DESC"},
+     *      {"name"="maxPlayers", "dataType"="string", "pattern"="(foo|bar) ASC|DESC"},
+     *      {"name"="minPlayers", "dataType"="string", "pattern"="(foo|bar) ASC|DESC"}
+     *  }
+     * )
+     */
+    public function postCompanyCreateAction(Request $request) {
+        $requestContent = $request->getContent();
+        $data = [
+            'response' => $requestContent
+        ];
+
+        $view = $this->view($data);
+        return $this->handleView($view);
+    }
+
+    /**
+     * Этот метод позволяет получить список компаний для того, чтобы обрабатывать их в дальнейшем
+     *
+     * @ApiDoc(
+     *  resource=true,
+     *  description="Получение списка компаний",
+     *  filters={
+     *      {"name"="page", "dataType"="integer"},
+     *      {"name"="author", "dataType"="string", "pattern"="(foo|bar) ASC|DESC"}
+     *  }
+     * )
+     * @Get("/find/{id}")
+     */
+    public function getCompanyFindAction(Request $request, Company $company)
     {
-        $em = $this->get('doctrine.orm.entity_manager');
+        return [
+            'item' => $company
+        ];
+    }
 
-        $company = new Company();
-        $company->setTitle('Тестовая компания #'.time());
-        $company->setGameId(1);
-        $company->setPlayersLimit(10);
-        $company->setPrisesGiven(mt_rand(1, 12));
-        $company->setRegisteredCodes(mt_rand(1, 12));
-        $company->setRegisteredPlayers(mt_rand(1, 12));
-        $company->setStartDate(new \DateTime());
-        $company->setTimeActive(new \DateTime('-1 day'));
-        $company->setState('активный');
+    /**
+     * Этот метод позволяет получить список компаний для того, чтобы обрабатывать их в дальнейшем
+     *
+     * @ApiDoc(
+     *  resource=true,
+     *  description="Получение списка компаний",
+     *  filters={
+     *      {"name"="page", "dataType"="integer"},
+     *      {"name"="sort", "dataType"="string"},
+     *      {"name"="direction", "dataType"="string"}
+     *  }
+     * )
+     * @Get("/all")
+     * @View()
+     */
+    public function getCompanies(Request $request)
+    {
+        $em = $this->getDoctrine()->getManager();
 
-        $em->persist($company);
-        $em->flush();
-
-        $dql   = "SELECT a FROM AcmeGameBundle:Company a";
-        $query = $em->createQuery($dql);
+        if($sort = $request->query->get('sort')) {
+            $sortField = 'a.'.$sort;
+            $request->query->set('sort', $sortField);
+            $_GET['sort'] = $sortField;
+        }
 
         $page = $request->query->getInt('page', 1);
 
+        $dql   = "SELECT a FROM AcmeGameBundle:Company a";
+        $query = $em->createQuery($dql);
         $paginator  = $this->get('knp_paginator');
-        $tokens = $paginator->paginate(
+        $pagination = $paginator->paginate(
             $query,
             $page,
-            10
+            3
         );
 
-        /*
-         * Когда в коде больше комментариев, чем логики - это хорошо
-         */
-        $data = array(
-            'items' => $tokens->getItems(),
-            'count' => $tokens->getTotalItemCount(),
-            'page'  => $page
-        );
-
-        /*
-         * Формируем вид для нашего REST
-         * Здесь будем сеарилизовывать данные
-         */
-        $view = $this->view($data);
-
-        /*
-         * Вся безопасность фильтрации должна выстраиваться группами
-         * Для этого нужно для начала создать необходимые группы пользователей
-         * И далее создать идентичные группы для сериализации
-         * Далее мы просто через addGroup добавляем группу текущего пользователя по его Oatuh токену
-         * И получаем только те данные, к которым он имеет доступ
-         * Гибкая архитекрура, все довольны
-         */
-        $context = new Context();
-
-        /*
-         * Здесь будет указываться не admin, а группа пользователя
-         * Что есть $this->getToken()->getUser()->getGroup()
-         */
-        $context->addGroup('admin');
-
-        /*
-         * Приминяем контекст админа к текущему выводу
-         */
-        $view->setContext($context);
-        return $this->handleView($view);
+        return [
+            'items' => $pagination->getItems(),
+            'count' => $pagination->getTotalItemCount(),
+            'page'  => $page,
+            'direction' => $request->query->get('direction')
+        ];
     }
 }

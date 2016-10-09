@@ -41,13 +41,13 @@ class Company
     private $gameId;
 
     /**
-     * @ORM\Column(type="date")
+     * @ORM\Column(type="date", nullable=true)
      * @Groups({"admin"})
      */
     private $startDate;
 
     /**
-     * @ORM\Column(type="date")
+     * @ORM\Column(type="date", nullable=true)
      * @Groups({"admin"})
      */
     private $timeActive;
